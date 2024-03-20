@@ -21,13 +21,16 @@ import solve_library as solvel
 import data_library as data
 import csv
 import math
+import matplotlib.pyplot as plt
+import os
+import pathlib
 
 def magnification (X1 : np.ndarray, 
                    X2 : np.ndarray,
                    x1 : np.ndarray,
                    x2 : np.ndarray) -> np.ndarray :
     """Calculation of the magnification between reals and detected positions
-    in mm/px
+    in unity(mm or µm)/px
     
     Args:
        X1 : numpy.ndarrayx
@@ -50,160 +53,13 @@ def magnification (X1 : np.ndarray,
     Magnification = np.asarray([Delta_x1/Delta_X1, Delta_x2/Delta_X2]) 
     return (Magnification)
 
-def Soloff_calibration (z_list : np.ndarray,
-                        Soloff_pform : int,
-                        left_folder : str = 'left_calibration',
-                        right_folder : str = 'right_calibration',
-                        name : str = 'calibration',
-                        saving_folder : str = 'results',
-                        ncx : int = 16,
-                        ncy : int = 12,
-                        sqr : float = 0.3,
-                        hybrid_verification : bool = False,
-                        multifolder : bool = False,
-                        plotting : bool = False) -> (np.ndarray, 
-                                                     np.ndarray, 
-                                                     np.ndarray):
-    """Calculation of the magnification between reals and detected positions 
-    and the calibration parameters A = Soloff_constants0 (Resp Soloff_constants):--> X = A.M(x)
-    
-    Args:
-       z_list : numpy.ndarray
-           List of the different z position. (WARNING : Should be order the 
-                                              same way in the target folder)
-       Soloff_pform : int
-           Polynomial form
-       left_folder : str, optional
-           Left calibration images folder
-       right_folder : str, optional
-           Right calibration images folder
-       name : str, optional
-           Name to save
-       saving_folder : str, optional
-           Folder to save
-       ncx : int, optional
-           The number of squares for the chessboard through x direction
-       ncy : int, optional
-           The number of squares for the chessboard through y direction
-       sqr : float, optional
-           Size of a square (in mm)
-       hybrid_verification : bool, optional
-           If True, verify each pattern detection and propose to pick 
-           manually the bad detected corners. The image with all detected
-           corners is show and you can decide to change any point using
-           it ID (ID indicated on the image) as an input. If there is no
-           bad detected corner, press ENTER to go to the next image.
-       multifolder : bool, optional
-           Used for specific image acquisition when all directions moved
-       plotting = Bool
-           Plot the calibration view or not
-           
-    Returns:
-       Soloff_constants0 : numpy.ndarray
-           Constants of Soloff polynomial form '111'
-       Soloff_constants : numpy.ndarray
-           Constants of Soloff polynomial form chose (Soloff_pforloasm)
-       Magnification : numpy.ndarray
-           Magnification between reals and detected positions 
-           [[Mag Left x, Mag Left y], [Mag Right x, Mag Right y]]
-    """
-    z_list = np.array(z_list)    
-    Soloff_constants0 = np.zeros((2, 2, 4))
-    if Soloff_pform == 111 or Soloff_pform == 1 :
-        Soloff_constants = np.zeros((2, 2, 4))
-    elif Soloff_pform == 221 :
-        Soloff_constants = np.zeros((2, 2, 9))
-    elif Soloff_pform == 222 or Soloff_pform == 2 :
-        Soloff_constants = np.zeros((2, 2, 10))
-    elif Soloff_pform == 332 :
-        Soloff_constants = np.zeros((2, 2, 19))
-    elif Soloff_pform == 333 or Soloff_pform == 3 :
-        Soloff_constants = np.zeros((2, 2, 20))
-    elif Soloff_pform == 443 :
-        Soloff_constants = np.zeros((2, 2, 34))
-    elif Soloff_pform == 444 or Soloff_pform == 4 :
-        Soloff_constants = np.zeros((2, 2, 35))
-    elif Soloff_pform == 554 :
-        Soloff_constants = np.zeros((2, 2, 55))
-    elif Soloff_pform == 555 or Soloff_pform == 5 :
-        Soloff_constants = np.zeros((2, 2, 56))    
-    else :
-        raise('Only define for polynomial forms 111, 221, 222, 332, 333, 443, 444, 554 or 555')
-    
-    A_0 = [Soloff_constants0, Soloff_constants]
-    Soloff_pforms = [1, Soloff_pform]
-
-    
-    # Detect points from folders
-    if multifolder :
-        all_X, all_x, nb_pts = data.multifolder_pattern_detection(left_folder = left_folder,
-                                                                  right_folder = right_folder,
-                                                                  name = name,
-                                                                  saving_folder = saving_folder,
-                                                                  ncx = ncx,
-                                                                  ncy = ncy,
-                                                                  sqr = sqr,
-                                                                  hybrid_verification = hybrid_verification)          
-    else :
-        all_X, all_x, nb_pts = data.pattern_detection(left_folder = left_folder,
-                                                      right_folder = right_folder,
-                                                      name = name,
-                                                      saving_folder = saving_folder,
-                                                      ncx = ncx,
-                                                      ncy = ncy,
-                                                      sqr = sqr,
-                                                      hybrid_verification = hybrid_verification)        
-
-    # Creation of the reference matrix Xref and the real position Ucam for 
-    # each camera
-    x, Xc1, Xc2 = data.camera_np_coordinates(all_X, all_x, z_list)     
-
-    # Plot the references plans
-    solvel.refplans(x, z_list, plotting = plotting)
-
-    # Calcul of the Soloff polynome's constants. X = A . M
-    Magnification = np.zeros((2, 2))
-    for camera in [1, 2] :
-        if camera == 1 :
-            X = Xc1
-        elif camera == 2 :
-            X = Xc2
-        x1, x2, x3 = x
-        X1, X2 = X
-        
-        # Compute the magnification (same for each cam as set up is symetric)
-        Magnification[camera-1] = magnification (X1, X2, x1, x2)
-        
-        for pol in range (len (A_0)) :
-            # Do the system X = Ai*M, where M is the monomial of the real 
-            # coordinates of crosses and X the image coordinates, and M the 
-            # unknow (polynomial form aab)
-            Soloff_pform = Soloff_pforms[pol]
-            M = solvel.Soloff_Polynome({'polynomial_form' : Soloff_pform}).pol_form(x)
-            Ai = np.matmul(X, np.linalg.pinv(M))
-            A_0[pol][camera-1] = Ai
-            
-            # Error of projection
-            Xd = np.matmul(Ai,M)
-            proj_error = X - Xd
-            print('Max ; min projection error (polynomial form ', 
-                str(Soloff_pform),
-                ') for camera ', 
-                str(camera),
-                ' = ',
-                str(sgf.round(np.nanmax(proj_error), sigfigs =3)),
-                ' ; ',
-                str(sgf.round(np.nanmin(proj_error), sigfigs =3)),
-                ' px')
-    Soloff_constants0, Soloff_constants = A_0
-    return(Soloff_constants0, Soloff_constants, Magnification)
-
 def Soloff_identification (Xc1_identified : np.ndarray,
                            Xc2_identified : np.ndarray,
                            Soloff_constants0 : np.ndarray, 
                            Soloff_constants : np.ndarray,
                            Soloff_pform : int,
-                           method : str = 'curve_fit') -> np.ndarray :
+                           method : str = 'Peter',
+                           cut : int = 0) -> np.ndarray :
     """Identification of the points detected on both cameras left and right 
     into the global 3D-space
     
@@ -219,166 +75,101 @@ def Soloff_identification (Xc1_identified : np.ndarray,
        Soloff_pform : int
            Polynomial form
        method : str, optional
-           Python method used to solve it ('Least-squares' or 'curve-fit')
+           Python method used to solve it ('Peter' 'curve-fit')
+       cut : int, optional
+           Used by Peter method to reduce the windows of resolution
 
     Returns:
        x_solution : numpy.ndarray
            Identification in the 3D space of the detected points
     """
-    if len(Xc1_identified.shape) == 3 : 
-        modif_22_12_09 = True
-        nx, ny, naxis = Xc1_identified.shape
-        Xc1_identified = Xc1_identified.reshape((nx*ny, naxis))
-        Xc2_identified = Xc2_identified.reshape((nx*ny, naxis))
-    elif len(Xc1_identified.shape) == 2 : 
-        modif_22_12_09 = False
-    else :
-        raise('Error, X_ci shape different than 2 or 3')    
-    # We're searching for the solution x0(x1, x2, x3) as Xc1 = ac1 . 
-    # (1 x1 x2 x3) and Xc2 = ac2 . (1 x1 x2 x3)  using least square method.
-    x0 = solvel.least_square_method (Xc1_identified, Xc2_identified, Soloff_constants0)
+    if method == 'Peter' :
+        if Soloff_pform != 332 :
+            raise('No Peter resolution for the polynomial form ', Soloff_pform, ' for the moment (Only for the form 332')
+        Xl = np.copy(Xc1_identified[:,:,0])
+        Yl = np.copy(Xc1_identified[:,:,1])
+        Xr = np.copy(Xc2_identified[:,:,0])
+        Yr = np.copy(Xc2_identified[:,:,1])
+        Xl0 = []
+        Yl0 = []
+        Xr0 = []
+        Yr0 = []
+
+        l = 20
+        nx,ny = Xl.shape
+        nx = nx//l
+        ny = ny//l
+        for i in range (l) :
+            for j in range (l) :
+                Xl0.append(Xl[i*nx, j*ny])
+                Yl0.append(Yl[i*nx, j*ny])
+                Xr0.append(Xr[i*nx, j*ny])
+                Yr0.append(Yr[i*nx, j*ny])
+        
+        Xl0 = np.array(Xl0).reshape((l,l))
+        Yl0 = np.array(Yl0).reshape((l,l))
+        Xr0 = np.array(Xr0).reshape((l,l))
+        Yr0 = np.array(Yr0).reshape((l,l))
+        Xc1_identified0 = np.zeros((l,l,2))
+        Xc1_identified0[:,:,0] = Xl0
+        Xc1_identified0[:,:,1] = Yl0
+        Xc2_identified0 = np.zeros((l,l,2))
+        Xc2_identified0[:,:,0] = Xr0
+        Xc2_identified0[:,:,1] = Yr0        
+        x,y,z = Soloff_identification (Xc1_identified0,
+                                       Xc2_identified0,
+                                       Soloff_constants0, 
+                                       Soloff_constants,
+                                       Soloff_pform,
+                                       method = 'curve_fit') 
+        print('')
+        print('')
+        print('Peter mapping')
+        print('xmax',np.max(x))
+        print('ymax',np.max(y))
+        print('zmax',np.max(z))
+        print('xmin',np.min(x))
+        print('ymin',np.min(y))
+        print('zmin',np.min(z))
+        print('')
+        print('')
+        xsolution = solvel.Peter(Xl,
+                                 Yl,
+                                 Xr,
+                                 Yr,
+                                 Soloff_constants,
+                                 x,
+                                 y,
+                                 z,
+                                 cut = cut)
     
-    # Solve the polynomials constants ai with curve-fit method (Levenberg 
-    # Marcquardt)
-    xsolution, Xc, Xd = solvel.Levenberg_Marquardt_solving(Xc1_identified, 
-                                                           Xc2_identified, 
-                                                           Soloff_constants, 
-                                                           x0, 
-                                                           Soloff_pform, 
-                                                           method = 'curve_fit')
-    if modif_22_12_09 :
-        xsolution = xsolution.reshape((3, nx, ny))
+    else :
+        if len(Xc1_identified.shape) == 3 : 
+            modif_22_12_09 = True
+            nx, ny, naxis = Xc1_identified.shape
+            Xc1_identified = Xc1_identified.reshape((nx*ny, naxis))
+            Xc2_identified = Xc2_identified.reshape((nx*ny, naxis))
+        elif len(Xc1_identified.shape) == 2 : 
+            modif_22_12_09 = False
+        else :
+            raise('Error, X_ci shape different than 2 or 3')
+        # We're searching for the solution x0(x1, x2, x3) as Xc1 = ac1 . 
+        # (1 x1 x2 x3) and Xc2 = ac2 . (1 x1 x2 x3)  using least square method.
+        x0 = solvel.least_square_method (Xc1_identified, 
+                                         Xc2_identified, 
+                                         Soloff_constants0)
+        
+        # Solve the polynomials constants ai with curve-fit method (Levenberg 
+        # Marcquardt)
+        xsolution, Xc, Xd = solvel.Levenberg_Marquardt_solving(Xc1_identified, 
+                                                               Xc2_identified, 
+                                                               Soloff_constants, 
+                                                               x0, 
+                                                               Soloff_pform, 
+                                                               method = method)
+        if modif_22_12_09 :
+            xsolution = xsolution.reshape((3, nx, ny))
     return (xsolution)
-
-def direct_calibration (z_list : np.ndarray,
-                        direct_pform : int,
-                        left_folder : str = 'left_calibration',
-                        right_folder : str = 'right_calibration',
-                        name : str = 'calibration',
-                        saving_folder : str = 'results',
-                        ncx : int = 16,
-                        ncy : int = 12,
-                        sqr : float = 0.3,
-                        hybrid_verification : bool = False,
-                        multifolder : bool = False,
-                        plotting : bool = False) -> (np.ndarray, 
-                                                     np.ndarray) :
-    """Calculation of the magnification between reals and detected positions 
-    and the calibration parameters A:--> x = A.M(X)
-    
-    Args:
-       z_list : numpy.ndarray
-           List of the different z position. (WARNING : Should be order the 
-                                              same way in the target folder)
-       direct_pform : int
-           Polynomial degree
-       left_folder : str, optional
-           Left calibration images folder
-       right_folder : str, optional
-           Right calibration images folder
-       name : str, optional
-           Name to save
-       saving_folder : str, optional
-           Folder to save
-       ncx : int, optional
-           The number of squares for the chessboard through x direction
-       ncy : int, optional
-           The number of squares for the chessboard through y direction
-       sqr : float, optional
-           Size of a square (in mm)
-       hybrid_verification : bool, optional
-           If True, verify each pattern detection and propose to pick 
-           manually the bad detected corners. The image with all detected
-           corners is show and you can decide to change any point using
-           it ID (ID indicated on the image) as an input. If there is no
-           bad detected corner, press ENTER to go to the next image.
-       multifolder : bool, optional
-           Used for specific image acquisition when all directions moved
-       plotting = Bool
-           Plot the calibration view or not
-           
-    Returns:
-       direct_constants : numpy.ndarray
-           Constants of direct polynomial
-       Magnification : numpy.ndarray
-           Magnification between reals and detected positions
-    """
-    z_list = np.array(z_list)
-    
-    if direct_pform == 1 :
-        direct_constants = np.zeros((3, 5))
-    elif direct_pform == 2 :
-        direct_constants = np.zeros((3, 15))
-    elif direct_pform == 3 :
-        direct_constants = np.zeros((3, 35))
-    elif direct_pform == 4 :
-        direct_constants = np.zeros((3, 70))
-    elif direct_pform == 5 :
-        direct_constants = np.zeros((3, 121))
-    else :
-        raise ('Only define for polynomial degrees (1, 2, 3, 4 or 5')
-    
-    # Detect points from folders
-    if multifolder :
-        all_X, all_x, nb_pts = data.multifolder_pattern_detection(left_folder = left_folder,
-                                                                  right_folder = right_folder,
-                                                                  name = name,
-                                                                  saving_folder = saving_folder,
-                                                                  ncx = ncx,
-                                                                  ncy = ncy,
-                                                                  sqr = sqr,
-                                                                  hybrid_verification = hybrid_verification)          
-    else :
-        all_X, all_x, nb_pts = data.pattern_detection(left_folder = left_folder,
-                                                      right_folder = right_folder,
-                                                      name = name,
-                                                      saving_folder = saving_folder,
-                                                      ncx = ncx,
-                                                      ncy = ncy,
-                                                      sqr = sqr,
-                                                      hybrid_verification = hybrid_verification)       
-
-    # Creation of the reference matrix Xref and the real position Ucam for 
-    # each camera i
-    x, Xc1, Xc2 = data.camera_np_coordinates(all_X, all_x, z_list)
-
-    # Plot the references plans
-    solvel.refplans(x, z_list, plotting = plotting)
-        
-    # Calcul of the Soloff polynome's constants. X = A . M
-    Magnification = np.zeros((2, 2))
-
-    for camera in [1, 2] :
-        if camera == 1 :
-            X = Xc1
-        elif camera == 2 :
-            X = Xc2
-        x1, x2, x3 = x
-        X1, X2 = X
-        
-        # Compute the magnification (same for each cam as set up is symetric)
-        Magnification[camera-1] = magnification (X1, X2, x1, x2)
-        
-        # Do the system x = Ap*M, where M is the monomial of the real 
-        # coordinates of crosses and x the image coordinates, and M the unknow
-        M = solvel.Direct_Polynome({'polynomial_form' : direct_pform}).pol_form(Xc1, Xc2)
-        Ap = np.matmul(x, np.linalg.pinv(M))
-        direct_constants = Ap
-
-        # Error of projection
-        xd = np.matmul(Ap,M)
-        proj_error = x - xd
-        print('Max ; min projection error (polynomial form ', 
-            str(direct_pform),
-            ') for camera ', 
-            str(camera),
-            ' = ',
-            str(sgf.round(np.nanmax(proj_error), sigfigs =3)),
-            ' ; ',
-            str(sgf.round(np.nanmin(proj_error), sigfigs =3)),
-            ' px')
-
-    return(direct_constants, Magnification)    
 
 def direct_identification (Xc1_identified : np.ndarray,
                            Xc2_identified : np.ndarray,
@@ -423,6 +214,822 @@ def direct_identification (Xc1_identified : np.ndarray,
     if modif_22_12_09 :
         xsolution = xsolution.reshape((3, nx, ny))
     return(xsolution)
+
+def Zernike_identification (Xc1_identified : np.ndarray,
+                            Xc2_identified : np.ndarray,
+                            Zernike_constants : np.ndarray,
+                            Zernike_pform : int,
+                            Cameras_dimensions : list) -> np.ndarray :
+    """Identification of the points detected on both cameras left and right 
+    into the global 3D-space
+    
+    Args:
+       Xc1_identified : numpy.ndarray
+           Points identified on the left camera
+       Xc2_identified : numpy.ndarray
+           Points identified on the right camera
+       Zernike_constants : numpy.ndarray
+           Constants of Zernike polynomial
+       Zernike_pform : int
+           Polynomial form
+
+    Returns:
+       x_solution : numpy.ndarray
+           Identification in the 3D space of the detected points
+    """    
+    # Solve by Zernike method
+    if len(Xc1_identified.shape) == 3 : 
+        modif_22_12_09 = True
+        nx, ny, naxis = Xc1_identified.shape
+        Xc1_identified = Xc1_identified.reshape((nx*ny, naxis))
+        Xc2_identified = Xc2_identified.reshape((nx*ny, naxis))
+    elif len(Xc1_identified.shape) == 2 : 
+        modif_22_12_09 = False
+    else :
+        raise('Error, X_ci shape different than 2 or 3')
+    Xl1, Xl2 = Xc1_identified[:,0], Xc1_identified[:,1]
+    Xr1, Xr2 = Xc2_identified[:,0], Xc2_identified[:,1]
+    Xl = np.zeros((2,len(Xl1)))
+    Xr = np.zeros((2,len(Xr1)))
+    Xl = Xl1, Xl2
+    Xr = Xr1, Xr2
+    
+    M = solvel.Zernike_Polynome({'polynomial_form' : Zernike_pform}).pol_form(Xl, Xr, Cameras_dimensions)
+    xsolution = np.matmul(Zernike_constants,M)
+    if modif_22_12_09 :
+        xsolution = xsolution.reshape((3, nx, ny))
+    return(xsolution)
+
+def retroprojection_error (calibration_method : str,
+                           pform : int,
+                           calibration_constants : np.ndarray,
+                           z_points : np.ndarray,
+                           all_X : np.ndarray,
+                           all_xth : np.ndarray,
+                           left_folder : str = 'left_calibration',
+                           right_folder : str = 'right_calibration',
+                           name : str = 'calibration',
+                           saving_folder : str = 'results',
+                           ncx : int = 16,
+                           ncy : int = 12,
+                           sqr : float = 0.3,
+                           hybrid_verification : bool = False,
+                           save : bool = True,
+                           eject_crown : int = 0,
+                           method = 'curve-fit') -> (np.ndarray,
+                                                     np.ndarray) :
+    """Calcul of the retroprojection error between the theoratical plans 
+    positions and the calculated plans (with pycaso_identification)
+    
+    Args:
+       calibration_method : str
+           Calibration method of your choice (Soloff, direct or Zernike)
+       pform : int
+           Polynomial form of the method.
+       calibration_constants : np.ndarray (or tuple for Soloff calibration_method)
+           Calibration's constants of the method. Tuple for Soloff method (A111,A_pol)
+       z_points : numpy.ndarray
+           List of the different z position
+       all_X : numpy.ndarray
+           The corners of the pattern detect by the camera ranged in an array 
+           arrange with all left pictures followed by all right pictures. 
+           Expl : [left_picture_1, left_picture_2, right_picture_1, 
+                   right_picture_2]
+       all_xth : numpy.ndarray
+           The theoretical corners of the pattern
+       ncx : int, optional
+           The number of squares for the chessboard through x direction
+       ncy : int, optional
+           The number of squares for the chessboard through y direction
+       method : str, optional
+           Python method used to solve Soloff ('Peter' 'curve-fit')
+       Other arguments are useless...
+           
+    Returns:
+       z_mean : list
+           mean position of each z retro calculated
+       z_std : list
+           standard deviation of each z retro calculated
+       z_iter : list
+           z new position after iteration (fit with a plan)
+    """
+    z_mean = []
+    z_std = []
+    z_iter = []
+    n,npts,_ = all_X.shape
+    n = n//2
+    Cameras_dimensions = data.cameras_size(left_folder,
+                                           right_folder)
+    for i in range (n) :
+        Xc1 = all_X[i]
+        Xc2 = all_X[i+n]
+        nx, ny = ncx-1-2*eject_crown, ncy-1-2*eject_crown
+        Xc1 = np.reshape(Xc1,(ny, nx, 2))
+        Xc2 = np.reshape(Xc2,(ny, nx, 2))
+        ny,nx,_ = Xc1.shape
+        if calibration_method == 'Zernike' :
+            Zernike_A = calibration_constants
+            Zernike_pform = pform
+            Solution = Zernike_identification (Xc1,
+                                                   Xc2,
+                                                   Zernike_A,
+                                                   Zernike_pform,
+                                                   Cameras_dimensions)
+        elif calibration_method == 'Soloff' :
+            A111, A_pol = calibration_constants
+            Soloff_pform = pform
+            Solution = Soloff_identification (Xc1,
+                                                  Xc2,
+                                                  A111, 
+                                                  A_pol,
+                                                  Soloff_pform,
+                                                  method = method)
+        elif calibration_method == 'direct' :
+            direct_A = calibration_constants
+            direct_pform = pform
+            Solution = direct_identification (Xc1,
+                                                  Xc2,
+                                                  direct_A,
+                                                  direct_pform)
+        
+
+        z_theoric = np.reshape(z_points[i],(ny,nx))
+        fit, errors, mean_error, residual = solvel.fit_plan_to_points(Solution, 
+                                                                      title = 'Calibration plans',
+                                                                      plotting = False)
+        z_fit = z_points[i] - fit[0] * all_xth[i,:,0] - fit[1] * all_xth[i,:,1] - fit[2]
+        z_fit = np.ravel(z_theoric) - z_fit
+        
+        # plt.figure()
+        # plt.imshow(np.reshape(np.ravel(Solution[2]), (ny,nx)), plt.get_cmap('hot'), alpha=1)
+        # cb = plt.colorbar()
+        # cb.set_label('z (mm)')
+        # plt.title('z distribution on plan = ' +str(i)+ ' ; iteration = ' +str(it) + ' ; method = ' + calibration_method)
+        # plt.savefig(saving_folder +'/Pycaso_retroprojection_error/iteration' +str(it)+ '_z_plan' +str(i)+'_fit.png', dpi = 500)
+        # plt.close()
+        
+        z_mean.append(np.mean(Solution[2]))
+        z_std.append(np.std(Solution[2]-z_theoric))
+        z_iter.append(z_fit)
+    
+    z_mean = np.asarray(z_mean)
+    z_std = np.asarray(z_std)
+    z_iter = np.asarray(z_iter)
+    
+    return(z_mean, z_std, z_iter)
+
+
+def Soloff_calibration (z_list : np.ndarray,
+                        Soloff_pform : int,
+                        multifolder : bool = False,
+                        plotting : bool = False,
+                        iterations = 1,
+                        **kwargs) -> (np.ndarray, 
+                                      np.ndarray, 
+                                      np.ndarray):
+    """Calculation of the magnification between reals and detected positions 
+    and the calibration parameters A = Soloff_constants0 (Resp Soloff_constants):--> X = A.M(x)
+    
+    Args:
+       z_list : numpy.ndarray
+           List of the different z position. (WARNING : Should be order the 
+                                              same way in the target folder)
+       Soloff_pform : int
+           Polynomial form
+       multifolder : bool, optional
+           Used for specific image acquisition when all directions moved
+       plotting = Bool
+           Plot the calibration view or not
+       iterations : int
+           Number of iterations. For each of them, the z_list is changed 
+           with the retroprojection error assuming that the set-up is not 
+           perfect
+        **kwargs : All the arguments of the fonction data.pattern_detection
+           
+    Returns:
+       Soloff_constants0 : numpy.ndarray
+           Constants of Soloff polynomial form '111'
+       Soloff_constants : numpy.ndarray
+           Constants of Soloff polynomial form chose (Soloff_pform)
+       Magnification : numpy.ndarray
+           Magnification between reals and detected positions 
+           [[Mag Left x, Mag Left y], [Mag Right x, Mag Right y]]
+    """
+
+    if not Soloff_pform in [111, 1, 221, 222, 2, 332, 333, 3, 443, 444, 4, 554, 555, 5] :
+        raise('Only define for polynomial forms 111, 221, 222, 332, 333, 443, 444, 554 or 555')
+    
+    Soloff_pforms = [1, Soloff_pform]
+    
+    z_list = np.array(z_list)
+    try :
+        save_retro = kwargs['saving_folder']+'/Pycaso_retroprojection_error/'
+    except :
+        save_retro = ''
+    if not os.path.exists(save_retro) :
+        P = pathlib.Path(save_retro)
+        pathlib.Path.mkdir(P, parents = True)
+    for it in range(iterations) :
+        
+        if it == 0 :
+            # Detect points from folders
+            if multifolder :
+                all_X, all_xth, nb_pts = data.multifolder_pattern_detection(**kwargs)          
+            else :
+                all_X, all_xth, nb_pts = data.pattern_detection(**kwargs)        
+    
+            # Using not well detected images, remove corresponding arrays from all_X 
+            # (right and left) and z_list
+            nx,ny,nz = all_X.shape
+            a = np.where(np.isnan(all_X[:,0,0]) == True)[0]
+            b, c = [], []
+            for i in a :
+                b.append(i)
+                if i < nx//2 :
+                    b.append(i+nx//2)
+                    c.append(i)
+                else :
+                    b.append(i-nx//2)
+                    c.append(i-nx//2)
+            
+            b = list(set(b))
+            c = list(set(c))
+            b.sort()
+            c.sort()
+            z_list = np.delete(z_list, c, axis = 0)
+            all_xth = np.delete(all_xth, b, axis = 0)
+            all_X = np.delete(all_X, b, axis = 0)
+            
+            # Camera dimensions
+            Cameras_dimensions = data.cameras_size(**kwargs)
+        
+            # Creation of the reference matrix Xref and the real position Ucam for 
+            # each camera
+            nx, ny, _ = all_xth.shape
+            z_points = np.ones((nx//2, ny))
+            for i in range(nx//2) :
+                z_points[i] = z_points[i]*z_list[i]
+        
+        Soloff_constants0 = []
+        Soloff_constants = []
+        
+        # Creation of the reference matrix Xref and the real position Ucam for 
+        # each camera
+        x, Xc1, Xc2 = data.camera_coordinates(all_X, all_xth, z_points)     
+    
+        # Calcul of the Soloff polynome's constants. X = A . M
+        Magnification = np.zeros((2, 2))
+        for camera in [1, 2] :
+            if camera == 1 :
+                X = Xc1
+            elif camera == 2 :
+                X = Xc2
+            x1, x2, x3 = x
+            X1, X2 = X
+            
+            # Compute the magnification (same for each cam as set up is symetric)
+            Magnification[camera-1] = magnification (X1, X2, x1, x2)
+            
+            for pol in range (2) :
+                # Do the system X = Ai*M, where M is the monomial of the real 
+                # coordinates of crosses and X the image coordinates, and M the 
+                # unknow (polynomial form aab)
+                Soloff_pform = Soloff_pforms[pol]
+                M = solvel.Soloff_Polynome({'polynomial_form' : Soloff_pform}).pol_form(x)
+                Ai = np.matmul(X, np.linalg.pinv(M))
+                if pol == 0 :
+                    Soloff_constants0.append(Ai)
+                else :
+                    Soloff_constants.append(Ai)
+        px = 1/np.mean(Magnification)
+            
+        # Find and eventually plot the references plans
+        if plotting :
+            fit, errors, mean_error, residual = solvel.refplans(x, z_list, plotting = True)
+            
+        Soloff_constants0 = np.asarray(Soloff_constants0)
+        Soloff_constants = np.asarray(Soloff_constants)
+        
+        #Calcul the retroprojection error
+        try :
+            z_mean, z_std, z_iter = retroprojection_error('Soloff',
+                                                           Soloff_pform,
+                                                           (Soloff_constants0,Soloff_constants),
+                                                           z_points,
+                                                           all_X,
+                                                           all_xth,
+                                                           **kwargs)
+            mz_points = np.mean(z_points, axis=1)
+            z_error = (z_mean-mz_points)*px
+            
+            plt.errorbar(mz_points, z_error, (z_std)*px, linestyle='None', marker='^')
+            plt.title('zmeasured - ztheoretical for iteration '+str(it+1))
+            plt.xlabel('z theoretical (px)')
+            plt.ylabel('DELTA_z (px)')
+            plt.savefig(save_retro+'Soloff_retroprojection_error_iteration'+str(it+1)+'.png', dpi = 500)
+            plt.close()
+            
+            # Change the list to the new ajusted
+            z_points = z_iter
+        except :
+            print('Retroprojection estimation not possible : The ChAruco pattern might be partially out of field of view')
+            z_error = np.array([0,0])
+            
+    # Error of projection
+    print ('DEPTH OF FIELD :\n\t The calibrated depth of field is between \n\t', 
+           np.min(z_list), 'mm and', np.max(z_list), 'mm.\n')    
+    
+    print('RETROPROJECTION ERROR : \n\t Max ; min (polynomial form', 
+          str(Soloff_pform),') \n\t =',
+          str(sgf.round(np.nanmax(z_error), sigfigs =3)),';',
+          str(sgf.round(np.nanmin(z_error), sigfigs =3)),'px\n\t =',
+          str(sgf.round(np.nanmax(z_error/px), sigfigs =3)),';',
+          str(sgf.round(np.nanmin(z_error/px), sigfigs =3)),'mm')
+        
+    return(Soloff_constants0, Soloff_constants, Magnification)
+
+
+def direct_calibration (z_list : np.ndarray,
+                        direct_pform : int,
+                        multifolder : bool = False,
+                        plotting : bool = False,
+                        iterations = 1,
+                        **kwargs) -> (np.ndarray, 
+                                                     np.ndarray) :
+    """Calculation of the magnification between reals and detected positions 
+    and the calibration parameters A:--> x = A.M(X)
+    
+    Args:
+       z_list : numpy.ndarray
+           List of the different z position. (WARNING : Should be order the 
+                                              same way in the target folder)
+       direct_pform : int
+           Polynomial degree
+       multifolder : bool, optional
+           Used for specific image acquisition when all directions moved
+       plotting = Bool
+           Plot the calibration view or not
+       iterations : int
+           Number of iterations. For each of them, the z_list is changed 
+           with the retroprojection error assuming that the set-up is not 
+           perfect
+       **kwargs : All the arguments of the fonction data.pattern_detection
+       
+           
+    Returns:
+       direct_constants : numpy.ndarray
+           Constants of direct polynomial
+       Magnification : numpy.ndarray
+           Magnification between reals and detected positions
+    """
+    # Test the constant form
+    if not direct_pform in [1, 2, 3, 4, 5] :
+        raise ('Only define for polynomial degrees (1, 2, 3, 4 or 5')
+        
+    z_list = np.array(z_list)
+    try :
+        save_retro = kwargs['saving_folder']+'/Pycaso_retroprojection_error/'
+    except :
+        save_retro = ''
+    if not os.path.exists(save_retro) :
+        P = pathlib.Path(save_retro)
+        pathlib.Path.mkdir(P, parents = True)
+    for it in range(iterations) :
+        if it == 0 :
+            # Detect points from folders
+            if multifolder :
+                all_X, all_xth, nb_pts = data.multifolder_pattern_detection(**kwargs)          
+            else :
+                all_X, all_xth, nb_pts = data.pattern_detection(**kwargs)        
+    
+            # Using not well detected images, remove corresponding arrays from all_X 
+            # (right and left) and z_list
+            nx,ny,nz = all_X.shape
+            a = np.where(np.isnan(all_X[:,0,0]) == True)[0]
+            b, c = [], []
+            for i in a :
+                b.append(i)
+                if i < nx//2 :
+                    b.append(i+nx//2)
+                    c.append(i)
+                else :
+                    b.append(i-nx//2)
+                    c.append(i-nx//2)
+            
+            b = list(set(b))
+            c = list(set(c))
+            b.sort()
+            c.sort()
+            z_list = np.delete(z_list, c, axis = 0)
+            all_xth = np.delete(all_xth, b, axis = 0)
+            all_X = np.delete(all_X, b, axis = 0)
+            
+            # Camera dimensions
+            Cameras_dimensions = data.cameras_size(**kwargs)
+        
+            # Creation of the reference matrix Xref and the real position Ucam for 
+            # each camera
+            nx, ny, _ = all_xth.shape
+            z_points = np.ones((nx//2, ny))
+            for i in range(nx//2) :
+                z_points[i] = z_points[i]*z_list[i]
+        
+        # Creation of the reference matrix Xref and the real position Ucam for 
+        # each camera i
+        x, Xc1, Xc2 = data.camera_coordinates(all_X, all_xth, z_points)
+    
+        # Calcul of the direct polynome's constants. X = A . M
+        # Do the system x = Ap*M, where M is the monomial of the real 
+        # coordinates of crosses and x the image coordinates, and M the unknow
+        M = solvel.Direct_Polynome({'polynomial_form' : direct_pform}).pol_form(Xc1, Xc2)
+        Ap = np.matmul(x, np.linalg.pinv(M))
+        direct_constants = np.asarray(Ap)
+        
+        # Find and eventually plot the references plans
+        if plotting :
+            fit, errors, mean_error, residual = solvel.refplans(x, z_list, plotting = True)
+        
+        # Compute the magnification (same for each cam as set up is symetric)
+        Magnification = np.zeros((2, 2))
+        for camera in [1, 2] :
+            if camera == 1 :
+                X = Xc1
+            elif camera == 2 :
+                X = Xc2
+            x1, x2, x3 = x
+            X1, X2 = X
+            Magnification[camera-1] = magnification (X1, X2, x1, x2)
+        px = 1/np.mean(Magnification)
+        
+        #Calcul the retroprojection error
+        try :
+            z_mean, z_std, z_iter = retroprojection_error('direct',
+                                                           direct_pform,
+                                                           direct_constants,
+                                                           z_points,
+                                                           all_X,
+                                                           all_xth,
+                                                           **kwargs)
+        
+            mz_points = np.mean(z_points, axis=1)
+            z_error = (z_mean-mz_points)*px
+            
+            plt.errorbar(mz_points, z_error, (z_std)*px, linestyle='None', marker='^')
+            plt.title('zmeasured - ztheoretical for iteration '+str(it+1))
+            plt.xlabel('z theoretical (px)')
+            plt.ylabel('DELTA_z (px)')
+            plt.savefig(save_retro+'direct_retroprojection_error_iteration'+str(it+1)+'.png', dpi = 500)
+            plt.close()
+            
+            # Change the list to the new ajusted
+            z_points = z_iter
+        except :
+            print('Retroprojection estimation not possible : The ChAruco pattern might be partially out of field of view')
+            z_error = np.array([0,0])
+            
+    # Error of projection
+    print ('DEPTH OF FIELD :\n\t The calibrated depth of field is between \n\t', 
+           np.min(z_list), 'mm and', np.max(z_list), 'mm.\n')    
+    
+    print('RETROPROJECTION ERROR : \n\t Max ; min (polynomial form', 
+          str(direct_pform),') \n\t =',
+          str(sgf.round(np.nanmax(z_error), sigfigs =3)),';',
+          str(sgf.round(np.nanmin(z_error), sigfigs =3)),'px\n\t =',
+          str(sgf.round(np.nanmax(z_error/px), sigfigs =3)),';',
+          str(sgf.round(np.nanmin(z_error/px), sigfigs =3)),'mm')
+        
+
+    return(direct_constants, Magnification)    
+
+def Zernike_calibration (z_list : np.ndarray,
+                         Zernike_pform : int,
+                         multifolder : bool = False,
+                         plotting : bool = False,
+                         iterations = 1,
+                         **kwargs) -> (np.ndarray, 
+                                       np.ndarray, 
+                                       np.ndarray):
+    """Calculation of the magnification between reals and detected positions 
+    and the calibration parameters A = Zernike_constants0 (Resp Zernike_constants):--> X = A.M(x)
+    
+    Args:
+       z_list : numpy.ndarray
+           List of the different z position. (WARNING : Should be order the 
+                                              same way in the target folder)
+       Zernike_pform : int
+           Polynomial form
+           1 = Tilt : 1 + x + y 
+           2 add defocus : 2r^2-1 
+           3 add astigmatism : x^2-y^2 and 2xy
+           4 add coma : (3r^2-2)x and (3r^2-2)y
+           5 add trefoil : (3x^2-y^2)y and (3y^2-x^2)x
+           6 add sphericity : 6r^4-6r^2+1 
+           7 add second astigmatism : 4(x^4-y^4)-3(x^2-y^2) and (8r^2-6)xy
+           8 add tetrafoil :  x^4+y^4-6x^2y^2 and 4(x^2-y^2)xy
+           9 add second coma :  (10r^4-12r^2+3)x and (10r^4-12r^2+3)y
+           10 add second trefoil :  (5x^4-10x^2y^2-15y^4-4x^2+12y^2)x and (15x^4+10x^2y^2-5y^4-12x^2+4y^2)y
+           11 add hexafoil :  (x^4-10x^2y^2+5y^4)x and (5x^4-10x^2y^2+y^4)y
+           12 add second sphericity :  20r^6-30r^4+12r2-1 
+       multifolder : bool, optional
+           Used for specific image acquisition when all directions moved
+       plotting : Bool
+           Plot the calibration view or not
+       iterations : int
+           Number of iterations. For each of them, the z_list is changed 
+           with the retroprojection error assuming that the set-up is not 
+           perfect
+       **kwargs : All the arguments of the fonction data.pattern_detection
+           
+    Returns
+       Zernike_constants : numpy.ndarray
+           Constants of Zernike polynomial form chose (Zernike_pform)
+       Magnification : numpy.ndarray
+           Magnification between reals and detected positions 
+           [[Mag Left x, Mag Left y], [Mag Right x, Mag Right y]]
+    """
+    if not Zernike_pform in list(range(1, 13)) :
+        raise('Only define for polynomial forms '+ str(list(range(1, 13))))
+    
+    z_list = np.array(z_list)
+    try :
+        save_retro = kwargs['saving_folder']+'/Pycaso_retroprojection_error/'
+    except :
+        save_retro = ''
+    if not os.path.exists(save_retro) :
+        P = pathlib.Path(save_retro)
+        pathlib.Path.mkdir(P, parents = True)
+    for it in range(iterations) :
+        if it == 0 :
+            # Detect points from folders
+            if multifolder :
+                all_X, all_xth, nb_pts = data.multifolder_pattern_detection(**kwargs)          
+            else :
+                all_X, all_xth, nb_pts = data.pattern_detection(**kwargs)        
+    
+            # Using not well detected images, remove corresponding arrays from all_X 
+            # (right and left) and z_list
+            nx,ny,nz = all_X.shape
+            a = np.where(np.isnan(all_X[:,0,0]) == True)[0]
+            b, c = [], []
+            for i in a :
+                b.append(i)
+                if i < nx//2 :
+                    b.append(i+nx//2)
+                    c.append(i)
+                else :
+                    b.append(i-nx//2)
+                    c.append(i-nx//2)
+            
+            b = list(set(b))
+            c = list(set(c))
+            b.sort()
+            c.sort()
+            z_list = np.delete(z_list, c, axis = 0)
+            all_xth = np.delete(all_xth, b, axis = 0)
+            all_X = np.delete(all_X, b, axis = 0)
+            
+            # Camera dimensions
+            Cameras_dimensions = data.cameras_size(**kwargs)
+        
+            # Creation of the reference matrix Xref and the real position Ucam for 
+            # each camera
+            nx, ny, _ = all_xth.shape
+            z_points = np.ones((nx//2, ny))
+            for i in range(nx//2) :
+                z_points[i] = z_points[i]*z_list[i]
+            
+        # Creation of the reference matrix Xref and the real position Ucam for 
+        # each camera
+        x, Xc1, Xc2 = data.camera_coordinates(all_X, all_xth, z_points)
+
+        # Calcul of the Zernike polynome's constants. X = A . M
+        # Do the system x = Ap*M, where M is the monomial of the real 
+        # coordinates of crosses and x the image coordinates, and M the unknow
+        M = solvel.Zernike_Polynome({'polynomial_form' : Zernike_pform}).pol_form(Xc1, Xc2, Cameras_dimensions)
+        Ap = np.matmul(x, np.linalg.pinv(M))
+        Zernike_constants = np.asarray(Ap)
+        
+        # Find and eventually plot the references plans
+        if plotting :
+            fit, errors, mean_error, residual = solvel.refplans(x, z_list, plotting = True)
+
+        # Compute the magnification (same for each cam as set up is symetric)
+        Magnification = np.zeros((2, 2))
+        for camera in [1, 2] :
+            if camera == 1 :
+                X = Xc1
+            elif camera == 2 :
+                X = Xc2
+            x1, x2, x3 = x
+            X1, X2 = X
+            Magnification[camera-1] = magnification (X1, X2, x1, x2)
+        px = 1/np.mean(Magnification)
+
+        #Calcul the retroprojection error
+        try :
+            z_mean, z_std, z_iter = retroprojection_error('Zernike',
+                                                           Zernike_pform,
+                                                           Zernike_constants,
+                                                           z_points,
+                                                           all_X,
+                                                           all_xth,
+                                                           **kwargs)
+            
+
+            mz_points = np.mean(z_points, axis=1)
+            z_error = (z_mean-mz_points)*px
+            
+            plt.errorbar(mz_points, z_error, (z_std)*px, linestyle='None', marker='^')
+            plt.title('zmeasured - ztheoretical for iteration '+str(it+1))
+            plt.xlabel('z theoretical (px)')
+            plt.ylabel('DELTA_z (px)')
+            plt.savefig(save_retro+'Zernike_retroprojection_error_iteration'+str(it+1)+'.png', dpi = 500)
+            plt.close()
+            
+            # Change the list to the new ajusted
+            z_points = z_iter
+        except :
+            print('Retroprojection estimation not possible : The ChAruco pattern might be partially out of field of view')
+            z_error = np.array([0,0])
+            
+    # Error of projection
+    print ('DEPTH OF FIELD :\n\t The calibrated depth of field is between \n\t', 
+           np.min(z_list), 'mm and', np.max(z_list), 'mm.\n')    
+    
+    print('RETROPROJECTION ERROR : \n\t Max ; min (polynomial form', 
+          str(Zernike_pform),') \n\t =',
+          str(sgf.round(np.nanmax(z_error), sigfigs =3)),';',
+          str(sgf.round(np.nanmin(z_error), sigfigs =3)),'px\n\t =',
+          str(sgf.round(np.nanmax(z_error/px), sigfigs =3)),';',
+          str(sgf.round(np.nanmin(z_error/px), sigfigs =3)),'mm')
+    
+    return(Zernike_constants, Magnification)
+
+def Soloff_Zernike_calibration (z_list : np.ndarray,
+                                Soloff_pform : int,
+                                Zernike_pform : int = 3,
+                                multifolder : bool = False,
+                                plotting : bool = False,
+                                **kwargs) -> (np.ndarray, 
+                                              np.ndarray, 
+                                              np.ndarray):
+    """Calculation of the magnification between reals and detected positions 
+    and the calibration parameters A = Soloff_constants0 (Resp Soloff_constants):--> X = A.M(x)
+    
+    Args:
+       z_list : numpy.ndarray
+           List of the different z position. (WARNING : Should be order the 
+                                              same way in the target folder)
+       Soloff_pform : int
+           Polynomial form
+       multifolder : bool, optional
+           Used for specific image acquisition when all directions moved
+       plotting = Bool
+           Plot the calibration view or not
+       **kwargs : All the arguments of the fonction data.pattern_detection
+           
+    Returns:
+       Soloff_constants0 : numpy.ndarray
+           Constants of Soloff polynomial form '111'
+       Soloff_constants : numpy.ndarray
+           Constants of Soloff polynomial form chose (Soloff_pform)
+       Magnification : numpy.ndarray
+           Magnification between reals and detected positions 
+           [[Mag Left x, Mag Left y], [Mag Right x, Mag Right y]]
+    """
+    Zernike_constants, Magnification = Zernike_calibration (z_list,
+                                                            Zernike_pform ,
+                                                            multifolder = multifolder,
+                                                            plotting = plotting,
+                                                            **kwargs)
+    Soloff_constants0, Soloff_constants, Magnification = Soloff_calibration (z_list,
+                                                                             Soloff_pform,
+                                                                             multifolder = multifolder,
+                                                                             plotting = plotting,
+                                                                             **kwargs)
+    return(Zernike_constants, Soloff_constants, Magnification)
+
+def Soloff_Zernike_identification (Xc1_identified : np.ndarray,
+                                   Xc2_identified : np.ndarray,
+                                   Zernike_constants : np.ndarray, 
+                                   Soloff_constants : np.ndarray,
+                                   Soloff_pform : int,
+                                   Cameras_dimensions : list,
+                                   Zernike_pform : int = 3,
+                                   method : str = 'Peter',
+                                   cut : int = 0) -> np.ndarray :
+    """Identification of the points detected on both cameras left and right 
+    into the global 3D-space
+    
+    Args:
+       Xc1_identified : numpy.ndarray
+           Points identified on the left camera
+       Xc2_identified : numpy.ndarray
+           Points identified on the right camera
+       Soloff_constants0 : numpy.ndarray
+           Constants of Soloff polynomial form '111'
+       Soloff_constants : numpy.ndarray
+           Constants of Soloff polynomial form chose (polynomial_form)
+       Soloff_pform : int
+           Polynomial form
+       method : str, optional
+           Python method used to solve it ('Peter' 'curve-fit')
+       cut : int, optional
+           Used by Peter method to reduce the windows of resolution
+
+    Returns:
+       x_solution : numpy.ndarray
+           Identification in the 3D space of the detected points
+    """
+    if method == 'Peter' :
+        if Soloff_pform != 332 :
+            raise('No Peter resolution for the polynomial form ', Soloff_pform, ' for the moment (Only for the form 332')
+        Xl = np.copy(Xc1_identified[:,:,0])
+        Yl = np.copy(Xc1_identified[:,:,1])
+        Xr = np.copy(Xc2_identified[:,:,0])
+        Yr = np.copy(Xc2_identified[:,:,1])
+        Xl0 = []
+        Yl0 = []
+        Xr0 = []
+        Yr0 = []
+
+        l = 20
+        nx,ny = Xl.shape
+        nx = nx//l
+        ny = ny//l
+        for i in range (l) :
+            for j in range (l) :
+                Xl0.append(Xl[i*nx, j*ny])
+                Yl0.append(Yl[i*nx, j*ny])
+                Xr0.append(Xr[i*nx, j*ny])
+                Yr0.append(Yr[i*nx, j*ny])
+        
+        Xl0 = np.array(Xl0).reshape((l,l))
+        Yl0 = np.array(Yl0).reshape((l,l))
+        Xr0 = np.array(Xr0).reshape((l,l))
+        Yr0 = np.array(Yr0).reshape((l,l))
+        Xc1_identified0 = np.zeros((l,l,2))
+        Xc1_identified0[:,:,0] = Xl0
+        Xc1_identified0[:,:,1] = Yl0
+        Xc2_identified0 = np.zeros((l,l,2))
+        Xc2_identified0[:,:,0] = Xr0
+        Xc2_identified0[:,:,1] = Yr0        
+        x,y,z = Zernike_identification (Xc1_identified0,
+                                        Xc2_identified0,
+                                        Zernike_constants = Zernike_constants,
+                                        Zernike_pform = Zernike_pform,
+                                        Cameras_dimensions = Cameras_dimensions)
+        print('')
+        print('')
+        print('Peter mapping')
+        print('xmax',np.max(x))
+        print('ymax',np.max(y))
+        print('zmax',np.max(z))
+        print('xmin',np.min(x))
+        print('ymin',np.min(y))
+        print('zmin',np.min(z))
+        print('')
+        print('')
+        xsolution = solvel.Peter(Xl,
+                                 Yl,
+                                 Xr,
+                                 Yr,
+                                 Soloff_constants,
+                                 x,
+                                 y,
+                                 z,
+                                 cut = cut)
+    
+    else :
+        if len(Xc1_identified.shape) == 3 : 
+            modif_22_12_09 = True
+            nx, ny, naxis = Xc1_identified.shape
+            Xc1_identified = Xc1_identified.reshape((nx*ny, naxis))
+            Xc2_identified = Xc2_identified.reshape((nx*ny, naxis))
+        elif len(Xc1_identified.shape) == 2 : 
+            modif_22_12_09 = False
+        else :
+            raise('Error, X_ci shape different than 2 or 3')
+        x0 = Zernike_identification (Xc1_identified,
+                                     Xc2_identified,
+                                     Zernike_constants = Zernike_constants,
+                                     Zernike_pform = Zernike_pform,
+                                     Cameras_dimensions = Cameras_dimensions)
+        
+        # Solve the polynomials constants ai with curve-fit method (Levenberg 
+        # Marcquardt)
+        xsolution, Xc, Xd = solvel.Levenberg_Marquardt_solving(Xc1_identified, 
+                                                               Xc2_identified, 
+                                                               Soloff_constants, 
+                                                               x0, 
+                                                               Soloff_pform, 
+                                                               method = method)
+        if modif_22_12_09 :
+            xsolution = xsolution.reshape((3, nx, ny))
+    return (xsolution)
+
+
+
 
 def hybrid_identification(Xc1_identified : np.ndarray,
                           Xc2_identified : np.ndarray,
